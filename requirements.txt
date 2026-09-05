@@ -1,0 +1,10 @@
+# Previsión diaria (src/build_forecast.py, src/checks.py) — es lo único que necesita
+# el flujo automático de GitHub Actions.
+pandas>=2.0
+numpy>=1.24
+pyarrow>=14.0
+
+# Solo para regenerar el caso de estudio 2025 (src/build_map.py, src/prepare_static.py)
+# a partir del paquete de datos del TFT en data/raw/.
+geopandas>=1.0
+pyogrio>=0.8

@@ -1,0 +1,18 @@
+{
+  "temporada": {
+    "desde": "06-10",
+    "hasta": "09-18"
+  },
+  "pct_celdas_ge5_temporada": 11.0,
+  "pct_celdas_ge5_septiembre": 3.2,
+  "dias_temporada": 112,
+  "dias_con_mas_75pct_ge5": 1,
+  "reparto_temporada_pct": [
+    23.5,
+    25.4,
+    24.3,
+    15.8,
+    8.2,
+    2.8
+  ]
+}

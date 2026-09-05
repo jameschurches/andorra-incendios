@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5">
+<title>Visor de peligro de incendio forestal · Andorra</title>
+<meta name="description" content="Dos productos sobre la misma malla de 1 km²: caso de estudio retrospectivo de la temporada 2025 y previsión experimental de peligro D+0–D+7.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🔥</text></svg>">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<style>
+  :root{
+    --bg:#f5f6f7; --panel:#fff; --ink:#1b1f24; --muted:#5c6672; --line:#dfe3e8;
+    --accent:#c0392b; --deep:#001C47; --amber:#8a5a00; --amber-bg:#fdf3dc;
+    --shadow:0 2px 12px rgba(0,28,71,.12);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--ink);display:flex;flex-direction:column;
+       font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+
+  header{background:var(--deep);color:#fff;padding:.65rem 1.1rem .55rem;z-index:1200}
+  .fila{display:flex;align-items:center;gap:.9rem;flex-wrap:wrap}
+  header h1{margin:0;font-size:1.1rem;font-weight:650;letter-spacing:-.01em;flex:1 1 auto}
+  /* El logo comparte el azul #001C47 de la cabecera, así que funde sin recorte. */
+  header .logo{height:34px;width:auto;display:block;margin:-.15rem .2rem -.15rem -.35rem}
+  header button.info{background:transparent;border:1px solid #40587c;color:#dce5f0;
+      border-radius:6px;padding:.3rem .7rem;font-size:.8rem;cursor:pointer}
+  header button.info:hover{background:#0d2d5c;color:#fff}
+
+  /* Selector principal de producto */
+  .modos{display:flex;gap:.35rem;background:#0d2246;padding:.22rem;border-radius:9px;margin:.5rem 0 0}
+  .modos button{flex:1 1 0;background:transparent;border:0;color:#a9bad2;cursor:pointer;
+      padding:.42rem .8rem;border-radius:7px;font-size:.85rem;font-weight:650;letter-spacing:.02em;
+      display:flex;flex-direction:column;gap:.1rem;align-items:center;line-height:1.2}
+  .modos button small{font-weight:450;font-size:.72rem;color:#7f93b0}
+  .modos button[aria-pressed=true]{background:#fff;color:var(--deep)}
+  .modos button[aria-pressed=true] small{color:#5c6672}
+
+  /* Barra de contexto bajo la cabecera */
+  .contexto{background:#0a1f42;color:#c6d3e6;font-size:.75rem;padding:.45rem 1.1rem;
+      border-top:1px solid #16305c;
+      display:flex;gap:.1rem .9rem;flex-wrap:wrap;align-items:center;z-index:1100;line-height:1.5}
+  .contexto > span:not(.aviso):not(.badge)::after{content:"·";margin-left:.9rem;color:#3f5a85}
+  .badge{display:inline-block;font-size:.68rem;font-weight:700;letter-spacing:.07em;
+      padding:.2rem .5rem;border-radius:5px;background:#dce5f0;color:var(--deep);white-space:nowrap}
+  .badge.exp{background:#F7AB1C;color:#3a2a00}
+  .badge.stale{background:var(--accent);color:#fff}
+  .contexto b{color:#fff;font-weight:600}
+  .contexto .aviso{flex-basis:100%;color:#9fb2cc;font-size:.73rem}
+  .contexto > span:last-child::after{content:none}
+
+  #map{flex:1 1 auto;min-height:0;background:#e8e8e8}
+  .leaflet-container{font:inherit}
+  .leaflet-tile-pane .base{filter:saturate(.35) brightness(1.06)}
+
+  .panel{background:var(--panel);border-radius:10px;box-shadow:var(--shadow);
+      padding:.7rem .8rem;max-width:280px;font-size:.82rem;max-height:calc(100vh - 240px);overflow:auto}
+  .panel h2{margin:0 0 .45rem;font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;
+      color:var(--muted);font-weight:650}
+  .panel h2 + p.nota{margin-top:-.25rem}
+  .capas label{display:flex;align-items:center;gap:.45rem;padding:.16rem 0;cursor:pointer}
+  .capas input{accent-color:var(--accent);margin:0}
+  .sep{height:1px;background:var(--line);margin:.6rem 0}
+  .leyenda{display:none}
+  .leyenda.on{display:block}
+  .leyenda ul,.lista{list-style:none;margin:0;padding:0}
+  .leyenda li{display:flex;align-items:center;gap:.45rem;padding:.1rem 0;line-height:1.25}
+  .leyenda i{width:14px;height:14px;border-radius:3px;flex:none;border:1px solid rgba(0,0,0,.18)}
+  .leyenda .n{margin-left:auto;color:var(--muted);font-variant-numeric:tabular-nums;font-size:.76rem}
+  .nota{color:var(--muted);font-size:.75rem;margin:.5rem 0 0}
+  .signif{margin:.5rem 0 0;font-size:.75rem}
+  .signif summary{cursor:pointer;color:var(--deep);font-weight:600}
+  .signif ul.niveles{list-style:none;margin:.45rem 0 0;padding:0}
+  .signif ul.niveles li{display:flex;gap:.45rem;padding:.25rem 0;line-height:1.3;
+      border-top:1px solid var(--line)}
+  .signif ul.niveles i{width:12px;height:12px;border-radius:3px;flex:none;margin-top:.2rem;
+      border:1px solid rgba(0,0,0,.18)}
+  .signif .uso{background:#eef1f5;border-radius:4px;padding:.02rem .3rem;color:var(--muted);
+      font-size:.92em;white-space:nowrap}
+  .signif .pct{display:block;color:var(--muted);font-size:.92em;margin-top:.1rem}
+  .ayuda{color:var(--muted);font-size:.74rem;margin:.45rem 0 0;padding-left:.55rem;
+      border-left:2px solid var(--line)}
+
+  /* Selector temporal de la previsión */
+  .dias{display:grid;grid-template-columns:repeat(4,1fr);gap:.25rem}
+  .dias button{background:#f0f2f5;border:1px solid transparent;border-radius:7px;cursor:pointer;
+      padding:.3rem .1rem;font-size:.78rem;font-weight:600;color:var(--ink);
+      display:flex;flex-direction:column;line-height:1.15}
+  .dias button small{font-weight:400;font-size:.68rem;color:var(--muted)}
+  .dias button[aria-pressed=true]{background:var(--deep);color:#fff}
+  .dias button[aria-pressed=true] small{color:#b9c6d8}
+  .qc{background:var(--amber-bg);border:1px solid #f0dca8;border-radius:8px;padding:.5rem .55rem;
+      font-size:.75rem;color:var(--amber);margin-top:.6rem}
+  .qc b{display:block;margin-bottom:.2rem}
+  .qc details{margin-top:.3rem}
+  .qc summary{cursor:pointer}
+  .qc p{margin:.35rem 0 0;line-height:1.35;word-break:break-word}
+  .error{background:#fdecea;border:1px solid #f5c6c2;color:#8c2019;border-radius:8px;
+      padding:.6rem;font-size:.78rem}
+
+  .base-sel{background:var(--panel);border-radius:8px;box-shadow:var(--shadow);padding:.2rem;display:flex;gap:.15rem}
+  .base-sel button{border:0;background:transparent;border-radius:6px;cursor:pointer;
+      padding:.25rem .55rem;font-size:.75rem;color:var(--muted)}
+  .base-sel button[aria-pressed=true]{background:var(--deep);color:#fff}
+
+  .leaflet-tooltip.celda,.leaflet-popup-content{font-size:.8rem;color:var(--ink)}
+  .leaflet-tooltip.celda{background:#fff;border:1px solid var(--line);border-radius:8px;
+      box-shadow:var(--shadow);padding:.5rem .6rem;white-space:nowrap}
+  .ficha b{display:block;font-size:.85rem;margin-bottom:.25rem}
+  .ficha table{border-collapse:collapse;width:100%}
+  .ficha td{padding:.05rem 0}
+  .ficha td:first-child{color:var(--muted);padding-right:.8rem}
+  .ficha td:last-child{text-align:right;font-variant-numeric:tabular-nums}
+  .ficha .pie{display:block;margin-top:.35rem;color:var(--muted);font-size:.72rem;
+      white-space:normal;max-width:230px}
+
+  .modal{position:fixed;inset:0;background:rgba(0,28,71,.45);display:none;align-items:center;
+      justify-content:center;padding:1rem;z-index:2000}
+  .modal.on{display:flex}
+  .modal article{background:#fff;border-radius:12px;max-width:660px;max-height:86vh;overflow:auto;
+      padding:1.4rem 1.5rem;box-shadow:0 10px 40px rgba(0,0,0,.3)}
+  .modal h2{margin:.2rem 0 .6rem;font-size:1.05rem}
+  .modal h3{margin:1.2rem 0 .3rem;font-size:.8rem;text-transform:uppercase;letter-spacing:.05em;
+      color:var(--muted)}
+  .modal h4{margin:.9rem 0 .2rem;font-size:.88rem}
+  .modal p,.modal li{font-size:.87rem;color:#2c333c}
+  .modal ul{margin:.3rem 0;padding-left:1.15rem}
+  .modal code{background:#f0f2f5;border-radius:4px;padding:.05rem .3rem;font-size:.82em}
+  .modal .cerrar{float:right;border:0;background:var(--line);border-radius:6px;width:28px;height:28px;
+      cursor:pointer;font-size:1rem;line-height:1}
+  .modal .cita{background:#f7f8fa;border-left:3px solid var(--line);padding:.5rem .7rem;
+      margin:.6rem 0;font-size:.83rem}
+  .modal table.niv{border-collapse:collapse;width:100%;font-size:.8rem;margin:.5rem 0}
+  .modal table.niv th{text-align:left;color:var(--muted);font-weight:600;font-size:.72rem;
+      text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--line);padding:.3rem .5rem .3rem 0}
+  .modal table.niv td{border-bottom:1px solid var(--line);padding:.35rem .5rem .35rem 0;vertical-align:top}
+  .modal table.niv td.n{white-space:nowrap;font-weight:600}
+  .modal table.niv i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:.35rem;
+      border:1px solid rgba(0,0,0,.18);vertical-align:baseline}
+  .modal .nota{color:var(--muted);font-size:.78rem}
+  footer{font-size:.75rem;color:var(--muted);margin-top:1rem;border-top:1px solid var(--line);
+      padding-top:.6rem}
+
+  @media (max-width:640px){
+    header h1{font-size:.97rem;flex:1 1 auto}
+    header .logo{height:26px}
+    .modos button{font-size:.78rem}
+    .contexto{font-size:.72rem}
+    .panel{max-width:214px;font-size:.78rem;padding:.55rem .6rem;max-height:calc(100vh - 290px)}
+    .dias{grid-template-columns:repeat(4,1fr)}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="fila">
+    <img class="logo" src="assets/universitat-carlemany.png" alt="Universitat Carlemany"
+         width="312" height="131">
+    <h1>Visor de peligro de incendio forestal · Andorra</h1>
+    <button class="info" id="btn-info" type="button">Metodología</button>
+  </div>
+  <div class="modos" role="group" aria-label="Producto">
+    <button type="button" data-modo="hist" aria-pressed="true">ANÁLISIS 2025
+      <small>Caso de estudio retrospectivo</small></button>
+    <button type="button" data-modo="prev" aria-pressed="false">PREVISIÓN D+0–D+7
+      <small>Demostrador actualizado a diario</small></button>
+  </div>
+</header>
+
+<div id="map"></div>
+<div class="contexto" id="contexto"></div>
+
+<!-- Plantillas de panel, clonadas dentro del control de Leaflet -->
+<div id="tpl-hist" hidden>
+  <div class="panel">
+    <h2>Capa</h2>
+    <div class="capas">
+      <label><input type="radio" name="capa" value="peligro" checked> Peligro</label>
+      <label><input type="radio" name="capa" value="incert"> Incertidumbre relativa del modelo</label>
+      <label><input type="radio" name="capa" value="accion"> Acción recomendada</label>
+    </div>
+    <div class="sep"></div>
+    <div class="leyenda on" data-leyenda="peligro">
+      <h2>Nivel de peligro</h2>
+      <ul><li><i style="background:#4A78C8"></i>1 · Muy bajo<span class="n">6</span></li><li><i style="background:#6EC8F0"></i>2 · Bajo<span class="n">99</span></li><li><i style="background:#6FCE44"></i>3 · Moderado<span class="n">159</span></li><li><i style="background:#F5F23B"></i>4 · Alto<span class="n">145</span></li><li><i style="background:#DE8631"></i>5 · Muy alto<span class="n">69</span></li><li><i style="background:#D92B20"></i>6 · Extremo<span class="n">37</span></li></ul>
+      <p class="nota">Media estacional de <code>danger_met</code> clasificada con los umbrales
+         climatológicos estacionales 2017–2026.</p>
+    <details class="signif">
+      <summary>¿Qué significa cada nivel?</summary>
+      <ul class="niveles"><li><i style="background:#4A78C8"></i><div><b>1 · Muy bajo</b> <span class="uso">Vigilancia mínima</span><br>El combustible conserva humedad: es difícil que un fuego prenda y avance.<span class="pct">Posición en la climatología 2017–2026: por debajo del p25.</span></div></li><li><i style="background:#6EC8F0"></i><div><b>2 · Bajo</b> <span class="uso">Ordinaria</span><br>Un fuego podría prender, pero avanzaría despacio y sería fácil de controlar.<span class="pct">Posición en la climatología 2017–2026: p25–p50.</span></div></li><li><i style="background:#6FCE44"></i><div><b>3 · Moderado</b> <span class="uso">Atención</span><br>Situación intermedia de la temporada: un fuego prendería sin dificultad y avanzaría a ritmo medio.<span class="pct">Posición en la climatología 2017–2026: p50–p75.</span></div></li><li><i style="background:#F5F23B"></i><div><b>4 · Alto</b> <span class="uso">Refuerzo</span><br>El combustible está seco: un fuego prendería con facilidad, avanzaría rápido y exigiría más medios.<span class="pct">Posición en la climatología 2017–2026: p75–p90.</span></div></li><li><i style="background:#DE8631"></i><div><b>5 · Muy alto</b> <span class="uso">Prealerta</span><br>Entre el 10 % de días más desfavorables de la serie 2017–2026: propagación rápida y extinción difícil.<span class="pct">Posición en la climatología 2017–2026: p90–p97,5.</span></div></li><li><i style="background:#D92B20"></i><div><b>6 · Extremo</b> <span class="uso">Alerta máxima</span><br>Entre el 2,5 % de días más desfavorables de la serie: una ignición puede escapar al control inicial.<span class="pct">Posición en la climatología 2017–2026: por encima del p97,5.</span></div></li></ul>
+      <p class="nota">Los niveles describen la <b>susceptibilidad del territorio</b> —lo fácil que sería
+         que un fuego prendiera y avanzara—, no la probabilidad de que se produzca una ignición.</p>
+    </details>
+    </div>
+    <div class="leyenda" data-leyenda="incert">
+      <h2>Incertidumbre relativa del modelo</h2>
+      <ul><li><i style="background:#FAD899"></i>Baja<span class="n">170</span></li><li><i style="background:#EA9020"></i>Media<span class="n">170</span></li><li><i style="background:#C0392B"></i>Alta<span class="n">175</span></li></ul>
+      <p class="ayuda">Las zonas de incertidumbre alta son aquellas donde el modelo generalizó peor
+         al evaluarse sobre territorio no utilizado durante su entrenamiento (predicción
+         <em>out-of-fold</em> espacial).</p>
+    </div>
+    <div class="leyenda" data-leyenda="accion">
+      <h2>Acción recomendada</h2>
+      <ul><li><i style="background:#1a9850"></i>Sin acción especial</li><li><i style="background:#a6d96a"></i>Monitorización rutinaria</li><li><i style="background:#fee08b"></i>Alerta preventiva</li><li><i style="background:#fdae61"></i>Alerta + más datos</li><li><i style="background:#d73027"></i>Vigilancia + verificación campo</li><li><i style="background:#8B0000"></i>Vigilancia activa</li></ul>
+      <p class="nota">Cruce de nivel de peligro × nivel de incertidumbre.</p>
+    </div>
+  </div>
+</div>
+
+<div id="tpl-prev" hidden>
+  <div class="panel">
+    <h2>Día</h2>
+    <div class="dias" id="dias"></div>
+    <div class="sep"></div>
+    <h2>Nivel de peligro previsto</h2>
+    <ul class="lista" id="ley-prev"></ul>
+    <p class="nota">Umbrales climatológicos <b>diarios</b> del ISIA (2017–2026). Cada nivel indica la
+       posición respecto a la climatología, no dentro de esta semana.</p>
+    <details class="signif">
+      <summary>¿Qué significa cada nivel?</summary>
+      <ul class="niveles"><li><i style="background:#4A78C8"></i><div><b>1 · Muy bajo</b> <span class="uso">Vigilancia mínima</span><br>El combustible conserva humedad: es difícil que un fuego prenda y avance.<span class="pct">Posición en la climatología 2017–2026: por debajo del p25.</span></div></li><li><i style="background:#6EC8F0"></i><div><b>2 · Bajo</b> <span class="uso">Ordinaria</span><br>Un fuego podría prender, pero avanzaría despacio y sería fácil de controlar.<span class="pct">Posición en la climatología 2017–2026: p25–p50.</span></div></li><li><i style="background:#6FCE44"></i><div><b>3 · Moderado</b> <span class="uso">Atención</span><br>Situación intermedia de la temporada: un fuego prendería sin dificultad y avanzaría a ritmo medio.<span class="pct">Posición en la climatología 2017–2026: p50–p75.</span></div></li><li><i style="background:#F5F23B"></i><div><b>4 · Alto</b> <span class="uso">Refuerzo</span><br>El combustible está seco: un fuego prendería con facilidad, avanzaría rápido y exigiría más medios.<span class="pct">Posición en la climatología 2017–2026: p75–p90.</span></div></li><li><i style="background:#DE8631"></i><div><b>5 · Muy alto</b> <span class="uso">Prealerta</span><br>Entre el 10 % de días más desfavorables de la serie 2017–2026: propagación rápida y extinción difícil.<span class="pct">Posición en la climatología 2017–2026: p90–p97,5.</span></div></li><li><i style="background:#D92B20"></i><div><b>6 · Extremo</b> <span class="uso">Alerta máxima</span><br>Entre el 2,5 % de días más desfavorables de la serie: una ignición puede escapar al control inicial.<span class="pct">Posición en la climatología 2017–2026: por encima del p97,5.</span></div></li></ul>
+      <p class="nota">Los niveles describen la <b>susceptibilidad del territorio</b> —lo fácil que sería
+         que un fuego prendiera y avanzara—, no la probabilidad de que se produzca una ignición.</p>
+    </details>
+    <p class="ayuda" id="tasa-base"></p>
+    <div id="qc-prev"></div>
+  </div>
+</div>
+
+<div class="modal" id="modal">
+  <article>
+    <button class="cerrar" type="button" id="btn-cerrar" aria-label="Cerrar">×</button>
+    <h2>ISIA · Índice de Susceptibilidad de Incendios de Andorra</h2>
+
+    <p class="cita">Este mapa representa el índice creado (ISIA) representando para Andorra <b>cómo de
+       propicio está su territorio respecto a un posible incendio y avance</b>, celda a celda tamaño
+       1 kilómetro cuadrado. No dice dónde va a haber un incendio, ni cuándo, ni quién lo provocaría
+       sino la susceptibilidad a este.</p>
+
+    <h3>Qué aporta frente a lo que ya existe</h3>
+    <p><b>Frente al FWI europeo.</b> La referencia internacional para Andorra es el <i>Fire Weather
+       Index</i> canadiense que Copernicus/EFFIS calcula para toda Europa sobre meteorología a unos 9 km
+       de resolución. A esa malla, <b>el país entero cabe en unas seis celdas</b>: el fondo del valle y la
+       solana de enfrente reciben el mismo número, en un territorio con 1 800 m de desnivel donde esa
+       diferencia lo es todo. El ISIA baja a <b>1 km —515 celdas sobre el mismo territorio, unas 81 por
+       cada celda europea—</b> y, además de afinar la escala, añade dos cosas que el FWI no mira: el
+       <b>estado real de la vegetación</b>, medido por satélite (NDMI de Sentinel-2), y el <b>relieve</b>
+       (pendiente y orientación de la ladera). El FWI sigue siendo el núcleo meteorológico, público y
+       auditable, sobre el que se construye: el ISIA no lo sustituye, lo territorializa.</p>
+    <p><b>Frente al IPIF español.</b> El índice que AEMET puso en operación en 2026 sí trabaja a 1 km y
+       comparte la arquitectura de este trabajo —núcleo meteorológico, estado de la vegetación por
+       satélite, seis niveles calibrados contra una climatología de referencia—, pero cubre España y se
+       detiene en la frontera. Andorra queda sin producto equivalente a esa resolución.</p>
+    <p><b>Y algo que ninguno de los dos publica:</b> cuánta confianza merece cada celda. Aquí la
+       incertidumbre es una capa más del mapa.</p>
+
+    <h3>Los seis niveles</h3>
+    <p>La escala es la misma en los dos productos y sigue el estilo del IPIF: seis niveles definidos por
+       <b>percentiles de la climatología 2017–2026</b>, no de la temporada en curso. Eso significa que un
+       nivel quiere decir lo mismo todos los años: «Muy alto» es siempre «entre el 10 % de días más
+       desfavorables del histórico», no «alto comparado con esta semana».</p>
+    <table class="niv">
+      <thead><tr><th>Nivel</th><th>Percentil</th><th>Uso</th><th>Qué significa sobre el terreno</th></tr></thead>
+      <tbody><tr><td class="n"><i style="background:#4A78C8"></i>1 · Muy bajo</td><td>por debajo del p25</td><td>Vigilancia mínima</td><td>El combustible conserva humedad: es difícil que un fuego prenda y avance.</td></tr><tr><td class="n"><i style="background:#6EC8F0"></i>2 · Bajo</td><td>p25–p50</td><td>Ordinaria</td><td>Un fuego podría prender, pero avanzaría despacio y sería fácil de controlar.</td></tr><tr><td class="n"><i style="background:#6FCE44"></i>3 · Moderado</td><td>p50–p75</td><td>Atención</td><td>Situación intermedia de la temporada: un fuego prendería sin dificultad y avanzaría a ritmo medio.</td></tr><tr><td class="n"><i style="background:#F5F23B"></i>4 · Alto</td><td>p75–p90</td><td>Refuerzo</td><td>El combustible está seco: un fuego prendería con facilidad, avanzaría rápido y exigiría más medios.</td></tr><tr><td class="n"><i style="background:#DE8631"></i>5 · Muy alto</td><td>p90–p97,5</td><td>Prealerta</td><td>Entre el 10 % de días más desfavorables de la serie 2017–2026: propagación rápida y extinción difícil.</td></tr><tr><td class="n"><i style="background:#D92B20"></i>6 · Extremo</td><td>por encima del p97,5</td><td>Alerta máxima</td><td>Entre el 2,5 % de días más desfavorables de la serie: una ignición puede escapar al control inicial.</td></tr></tbody>
+    </table>
+    <p class="nota">La columna «uso» es la de la tabla 6 de la memoria del trabajo. Un nivel alto describe
+       condiciones del combustible y del tiempo, no una alarma: no implica que haya fuego ni que vaya a
+       haberlo.</p>
+
+    <h3>Análisis 2025</h3>
+    <p>Reconstruye, mirando hacia atrás, cómo de peligrosa fue cada zona de Andorra durante la temporada
+       de 2025.</p>
+    <p>Índices espectrales de Sentinel-2, meteorología diaria y topografía alimentan el
+       indicador <code>danger_met</code>, que se agrega como media estacional por celda entre el
+       10/06/2025 y el 18/09/2025 (20 fechas con imagen válida). Esa media se clasifica con los percentiles
+       climatológicos <b>estacionales</b> de la serie 2017–2026. La escala cromática está armonizada con el
+       visor de AEMET/IPIF.</p>
+    <h4>Incertidumbre relativa del modelo</h4>
+    <p>Señala en qué zonas el modelo acierta peor, para que un nivel alto en una zona
+       poco fiable no se trate igual que uno en zona fiable.</p>
+    <p>Se obtiene por predicción conforme —70 % de la anchura del intervalo al 90 % y
+       30 % del residuo absoluto <em>out-of-fold</em>, normalizados de forma robusta (p2–p98) y promediados
+       por celda— y se presenta en terciles Baja / Media / Alta. Las zonas de incertidumbre alta son
+       aquellas donde el modelo generalizó peor al evaluarse sobre territorio que no usó para entrenarse.
+       El valor continuo del popup es un índice relativo: <b>no es una probabilidad de incendio ni un
+       porcentaje de error</b>.</p>
+    <h4>Acción recomendada</h4>
+    <p>Cruza las dos capas anteriores; por ejemplo donde hay mucho peligro y poca confianza, la respuesta
+       sensata es una comprobación pero no fiabilidad completa del dato.</p>
+
+    <h3>Previsión D+0–D+7 · lo que viene</h3>
+    <p>Aplica la misma escala a la meteorología prevista para hoy y los próximos siete días. Es un
+       demostrador experimental, no un aviso.</p>
+    <p>La cadena parte de la meteorología diaria de Open-Meteo por nodo (temperatura máxima, humedad relativa,
+       precipitación acumulada y viento máximo, zona horaria Europe/Madrid) → <b>FWI previsto</b> con la
+       implementación de Van Wagner del trabajo, <b>sembrado con el último estado conocido de FFMC, DMC y
+       DC</b> por nodo y propagado día a día sin saltos → <b>ISIA</b> por celda con el último NDMI
+       disponible y la topografía → clasificación con los umbrales climatológicos <b>diarios</b>. El ISIA
+       mantiene la definición persistida, <code>clip(mm(FWI) × f_veg × f_topo, 0, 1)</code>, con las
+       normalizaciones p2–p98 multianuales fijadas: nada se recalibra con los ocho días previstos, que es
+       justo lo que permite alimentarlo con meteorología prevista sin rehacer el modelo.</p>
+    <h4>Incertidumbre de previsión (heurística)</h4>
+    <p>Cuanto más lejos está el día y más vieja es la última foto de la vegetación, menos hay que
+       fiarse.</p>
+    <p><code>0,6 × horizonte/7 + 0,4 × mín(antigüedad NDMI/30, 1)</code>, clasificada en
+       Baja (&lt; 0,33), Media (0,33–0,66) y Alta (&gt; 0,66). No es un intervalo probabilístico calibrado
+       y no debe leerse como una confianza del 90 %. Es un concepto distinto de la incertidumbre conforme
+       del análisis retrospectivo: no deben compararse entre sí.</p>
+    <p class="cita">La previsión D+0–D+7 demuestra la viabilidad técnica del flujo, pero todavía no ha sido
+       validada prospectivamente contra peligro observado o verdad-terreno institucional.</p>
+
+    <h3>Insights al ver el mapa diariamente</h3>
+    <h4>El nivel cambia mucho de un día para otro</h4>
+    <p>Es el comportamiento esperado del índice, no un error. El FFMC —la humedad del combustible fino—
+       se recalcula con la lluvia en menos de 24 horas, así que una racha seca seguida de un frente húmedo
+       hace caer el nivel varios escalones de golpe. El popup de cada celda muestra la temperatura, la
+       humedad, la lluvia y el viento previstos, que son los que explican el cambio.</p>
+    <h4>Hay muchas celdas en niveles altos a la vez</h4>
+    <p>Los umbrales se fijaron sobre la distribución de todo el año, así que un día seco de verano se sitúa
+       de forma natural en la parte alta de la escala. Como referencia, en la serie 2017–2026 solo el 11,0 %
+       de los días-celda de temporada alcanzan niveles 5–6 (3,2 % en septiembre) y un único día de 112
+       superó el 75 % de celdas en esos niveles; el panel muestra esa referencia junto a la previsión. Y hay
+       una razón técnica añadida: la semilla del FWI y los umbrales proceden del reanálisis ERA5, mientras
+       que los días previstos vienen del modelo de previsión, cuyo viento máximo casi duplica el de ERA5 en
+       los días que ambas fuentes cubren. El visor <b>no aplica ninguna corrección de sesgo</b> y avisa
+       automáticamente cuando más del 75 % de las celdas caen en niveles 5–6, para que pueda distinguirse
+       un episodio real de un artefacto de integración.</p>
+
+    <h3>Qué no es este visor</h3>
+    <ul>
+      <li>No es un aviso oficial ni sustituye a los medios de vigilancia o extinción: es información
+          complementaria, un prototipo académico diferenciado de los sistemas oficiales de emergencia.</li>
+      <li>No predice igniciones concretas. Comunica susceptibilidad ambiental, no la certeza de un fuego.</li>
+      <li>El análisis de 2025 es peligro agregado de una temporada cerrada: no representa la situación
+          actual.</li>
+      <li>La resolución de 1 km² no resuelve el detalle de ladera ni la interfaz urbano-forestal.</li>
+      <li>La observación de vegetación (NDMI) no se actualiza a diario: su antigüedad se muestra en cada
+          celda y penaliza la incertidumbre de previsión.</li>
+      <li>En una emergencia, la referencia es el Cos de Bombers d’Andorra i Protecció Civil.</li>
+    </ul>
+
+    <footer>Trabajo final · Carlos Iglesias Vicente · página construida el 05/09/2026.</footer>
+  </article>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+const CENTRO = [42.544763, 1.576313], COLS6 = ["#4A78C8", "#6EC8F0", "#6FCE44", "#F5F23B", "#DE8631", "#D92B20"];
+const NIVELES = ["Muy bajo","Bajo","Moderado","Alto","Muy alto","Extremo"];
+const NIVEL_INFO = [{"uso": "Vigilancia mínima", "pct": "por debajo del p25", "txt": "El combustible conserva humedad: es difícil que un fuego prenda y avance."}, {"uso": "Ordinaria", "pct": "p25–p50", "txt": "Un fuego podría prender, pero avanzaría despacio y sería fácil de controlar."}, {"uso": "Atención", "pct": "p50–p75", "txt": "Situación intermedia de la temporada: un fuego prendería sin dificultad y avanzaría a ritmo medio."}, {"uso": "Refuerzo", "pct": "p75–p90", "txt": "El combustible está seco: un fuego prendería con facilidad, avanzaría rápido y exigiría más medios."}, {"uso": "Prealerta", "pct": "p90–p97,5", "txt": "Entre el 10 % de días más desfavorables de la serie 2017–2026: propagación rápida y extinción difícil."}, {"uso": "Alerta máxima", "pct": "por encima del p97,5", "txt": "Entre el 2,5 % de días más desfavorables de la serie: una ignición puede escapar al control inicial."}];
+const INCERT = ["Baja","Media","Alta"];
+const N_CELDAS = 515;
+
+let modo = "hist", capa = "peligro", dia = 0;
+let HIST = null, FC = null, fcError = null, capaGeo = null, control = null;
+
+const num = (v, d = 2) => Number(v).toLocaleString("es-ES", {minimumFractionDigits:d, maximumFractionDigits:d});
+const fecha = s => s.split("-").reverse().join("/");
+
+const map = L.map("map", {zoomControl:true}).setView(CENTRO, 11);
+/* Etiquetas de topónimos por encima del coropletas, para que no las tape. */
+map.createPane("labels");
+map.getPane("labels").style.zIndex = 450;
+map.getPane("labels").style.pointerEvents = "none";
+
+const ESRI = "https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/";
+const ATRIB = "Teselas &copy; Esri &mdash; Esri, HERE, Garmin, " +
+  '&copy; colaboradores de <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+const BASES = {
+  claro:  {borde:"#555", capa: L.layerGroup([
+            L.tileLayer(ESRI + "World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}",
+                        {attribution:ATRIB, maxZoom:16}),
+            L.tileLayer(ESRI + "World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}",
+                        {pane:"labels", maxZoom:16})])},
+  oscuro: {borde:"#8d96a5", capa: L.layerGroup([
+            L.tileLayer(ESRI + "World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",
+                        {attribution:ATRIB, maxZoom:16}),
+            L.tileLayer(ESRI + "World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}",
+                        {pane:"labels", maxZoom:16})])}
+};
+let base = "claro";
+BASES[base].capa.addTo(map);
+
+/* ---------------------------------------------------------------- estilo y fichas */
+function color(p){
+  if (modo === "hist") return p[{peligro:"cp", incert:"cu", accion:"ca"}[capa]];
+  const c = FC && FC.celdas[p.id];
+  return c ? COLS6[c.n[dia] - 1] : "#c9ccd1";
+}
+const estilo = f => ({fillColor:color(f.properties), color:BASES[base].borde, weight:.3,
+                      fillOpacity: modo === "prev" && !(FC && FC.celdas[f.properties.id]) ? .35 : .75});
+
+function tabla(filas){
+  return "<table>" + filas.map(f => "<tr><td>" + f[0] + "</td><td>" + f[1] + "</td></tr>").join("") + "</table>";
+}
+
+function fichaHist(p){
+  const filas = {
+    peligro: [["Peligro medio (danger_met)", num(p.dm,3)], ["FWI medio", num(p.fwi,1)],
+              ["NDMI medio", num(p.ndmi,3)], ["Días secos", num(p.dry,1)]],
+    incert:  [["Incertidumbre", p.ni], ["Índice relativo de incertidumbre", num(p.inc,3)],
+              ["Nivel de peligro", p.np + " · " + p.nombre]],
+    accion:  [["Nivel de peligro", p.np + " · " + p.nombre], ["Incertidumbre", p.ni]]
+  }[capa];
+  const cab = capa === "accion" ? p.acc
+            : capa === "incert" ? "Incertidumbre " + p.ni
+            : p.np + " · " + p.nombre;
+  const pie = capa === "incert"
+    ? '<span class="pie">Índice relativo; no es una probabilidad de incendio ni un porcentaje de error.</span>'
+    : '<span class="pie">' + NIVEL_INFO[p.np - 1].uso + ": " + NIVEL_INFO[p.np - 1].txt + "</span>";
+  return '<div class="ficha"><b>' + cab + "</b>" + tabla(filas) +
+         tabla([["Celda", p.id]]) + pie + "</div>";
+}
+
+function fichaPrev(p){
+  const c = FC && FC.celdas[p.id];
+  if (!c) return '<div class="ficha"><b>' + p.id + "</b>Sin previsión para esta celda.</div>";
+  const d = FC.dias[dia], w = FC.nodos[c.nodo], m = FC.meta;
+  return '<div class="ficha"><b>' + c.n[dia] + " · " + NIVELES[c.n[dia] - 1] + "</b>" + tabla([
+    ["Celda", p.id],
+    ["Fecha", fecha(d.fecha) + " · D+" + d.d],
+    ["ISIA previsto", num(c.isia[dia], 3)],
+    ["FWI previsto", num(w.fwi[dia], 2)],
+    ["Tª máxima", num(w.t[dia], 1) + " °C"],
+    ["Humedad relativa", w.hr[dia] + " %"],
+    ["Precipitación", num(w.p[dia], 1) + " mm"],
+    ["Viento máximo", num(w.w[dia], 1) + " km/h"],
+    ["NDMI utilizado", num(c.ndmi, 3)],
+    ["Antigüedad NDMI", m.ndmi_dias + " días (" + fecha(m.ndmi_fecha) + ")"],
+    ["Incertidumbre de previsión", INCERT[c.incc[dia]] + " (" + num(c.inc[dia], 2) + ")"]
+  ]) + '<span class="pie">' + NIVEL_INFO[c.n[dia] - 1].uso + ": " + NIVEL_INFO[c.n[dia] - 1].txt +
+       "</span>" + '<span class="pie">Incertidumbre de previsión heurística: crece con el horizonte y ' +
+       "con la antigüedad de la vegetación. No es un intervalo probabilístico calibrado.</span></div>";
+}
+
+const ficha = p => modo === "hist" ? fichaHist(p) : fichaPrev(p);
+
+function pintar(){
+  if (!capaGeo) return;
+  capaGeo.setStyle(estilo);
+  // El contenido se genera al abrir; lo ya abierto se reabre para refrescarlo.
+  capaGeo.eachLayer(l => {
+    if (l.isPopupOpen()) { l.closePopup(); l.openPopup(); }
+    if (l.isTooltipOpen()) { l.closeTooltip(); l.openTooltip(); }
+  });
+}
+
+/* ------------------------------------------------------------------------ paneles */
+function panelHist(){
+  const div = document.getElementById("tpl-hist").firstElementChild.cloneNode(true);
+  div.querySelectorAll("input[name=capa]").forEach(r => r.addEventListener("change", e => {
+    capa = e.target.value;
+    div.querySelectorAll(".leyenda").forEach(l => l.classList.toggle("on", l.dataset.leyenda === capa));
+    pintar();
+  }));
+  return div;
+}
+
+function panelPrev(){
+  const div = document.getElementById("tpl-prev").firstElementChild.cloneNode(true);
+  if (!FC){
+    const e = document.createElement("div");
+    e.className = "error";
+    e.innerHTML = "<b>Previsión no disponible.</b> No se ha podido cargar <code>data/forecast.json</code>" +
+                  (fcError ? " (" + fcError + ")" : "") + ". El análisis de 2025 sigue disponible.";
+    return Object.assign(document.createElement("div"), {className:"panel", innerHTML:e.outerHTML});
+  }
+  const cont = div.querySelector("#dias");
+  FC.dias.forEach(d => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.setAttribute("aria-pressed", d.d === dia);
+    b.innerHTML = d.etiqueta + "<small>" + d.corta + "</small>";
+    b.addEventListener("click", () => {
+      dia = d.d;
+      cont.querySelectorAll("button").forEach((x, i) => x.setAttribute("aria-pressed", i === dia));
+      leyendaPrev(div);
+      contexto();
+      pintar();
+    });
+    cont.appendChild(b);
+  });
+  leyendaPrev(div);
+
+  const tb = FC.meta.tasa_base;
+  if (tb) div.querySelector("#tasa-base").innerHTML =
+    "Referencia: en la climatología 2017–2026 solo el <b>" +
+    num(tb.pct_celdas_ge5_temporada, 1) + " %</b> de los días-celda de temporada alcanzan nivel 5–6 (" +
+    num(tb.pct_celdas_ge5_septiembre, 1) + " % en septiembre), y " + tb.dias_con_mas_75pct_ge5 +
+    " de " + tb.dias_temporada + " días de temporada superaron el 75 % de celdas en esos niveles.";
+
+  if (FC.meta.avisos && FC.meta.avisos.length){
+    const q = document.createElement("div");
+    q.className = "qc";
+    q.innerHTML = "<b>Diagnóstico de control de calidad</b>" +
+      FC.meta.avisos.length + " de los 8 días concentran más del 75 % de las celdas en niveles 5–6. " +
+      "No se ha corregido ningún valor: puede ser un episodio real o un efecto de que la meteorología " +
+      "prevista y la climatología de referencia proceden de fuentes distintas." +
+      "<details><summary>Ver detalle</summary>" +
+      FC.meta.avisos.map(a => "<p>" + a + "</p>").join("") + "</details>";
+    div.querySelector("#qc-prev").appendChild(q);
+  }
+  return div;
+}
+
+function leyendaPrev(div){
+  const rep = FC.meta.reparto[dia] || [];
+  div.querySelector("#ley-prev").innerHTML = COLS6.map((c, i) =>
+    '<li style="display:flex;align-items:center;gap:.45rem;padding:.1rem 0">' +
+    '<i style="width:14px;height:14px;border-radius:3px;flex:none;border:1px solid rgba(0,0,0,.18);' +
+    'background:' + c + '"></i>' + (i + 1) + " · " + NIVELES[i] +
+    '<span class="n" style="margin-left:auto;color:#5c6672;font-size:.76rem">' + (rep[i] || 0) + "</span></li>"
+  ).join("");
+}
+
+function panel(){
+  if (control) map.removeControl(control);
+  control = L.control({position:"topright"});
+  control.onAdd = () => {
+    const d = modo === "hist" ? panelHist() : panelPrev();
+    L.DomEvent.disableClickPropagation(d);
+    L.DomEvent.disableScrollPropagation(d);
+    return d;
+  };
+  control.addTo(map);
+}
+
+/* -------------------------------------------------------------- barra de contexto */
+function contexto(){
+  const c = document.getElementById("contexto");
+  if (modo === "hist"){
+    c.innerHTML =
+      '<span class="badge">ANÁLISIS 2025</span>' +
+      "<span>Caso de estudio retrospectivo · temporada <b>10 jun – 18 sep 2025</b></span>" +
+      "<span>Periodo analizado <b>10/06/2025–18/09/2025</b></span>" +
+      "<span><b>" + N_CELDAS + "</b> celdas de 1 km²</span>" +
+      "<span><b>20</b> fechas Sentinel-2 válidas</span>" +
+      "<span>Referencia climatológica <b>2017–2026</b></span>" +
+      '<span class="aviso">Producto académico retrospectivo. No representa la situación actual.</span>';
+    return;
+  }
+  if (!FC){
+    c.innerHTML = '<span class="badge stale">PREVISIÓN NO DISPONIBLE</span>' +
+      '<span class="aviso">No se ha podido cargar la previsión. El análisis de 2025 sigue disponible.</span>';
+    return;
+  }
+  const m = FC.meta, d = FC.dias[dia];
+  const horas = (Date.now() - Date.parse(m.generado_utc)) / 36e5;
+  c.innerHTML =
+    '<span class="badge exp">PREVISIÓN EXPERIMENTAL</span>' +
+    (horas > 24 ? '<span class="badge stale">PREVISIÓN NO ACTUALIZADA</span>' : "") +
+    "<span>Previsión actual · <b>Hoy → D+7</b></span>" +
+    "<span>Día mostrado <b>" + fecha(d.fecha) + " · D+" + d.d + "</b></span>" +
+    "<span>Actualizado: <b>" + m.generado_local + "</b> " + m.tz + "</span>" +
+    "<span>Semilla FWI <b>" + fecha(m.semilla_fwi_fecha) + "</b> · NDMI <b>" + fecha(m.ndmi_fecha) +
+    "</b> (" + m.ndmi_dias + " días)</span>" +
+    '<span class="aviso">Demostrador académico basado en meteorología prevista. No constituye un ' +
+    "aviso oficial ni predice igniciones concretas.</span>";
+}
+
+/* --------------------------------------------------------------------- arranque */
+function cambiarModo(m){
+  modo = m;
+  document.querySelectorAll(".modos button").forEach(b =>
+    b.setAttribute("aria-pressed", b.dataset.modo === m));
+  panel();
+  contexto();
+  pintar();
+}
+document.querySelectorAll(".modos button").forEach(b =>
+  b.addEventListener("click", () => cambiarModo(b.dataset.modo)));
+
+const ctlBase = L.control({position:"bottomleft"});
+ctlBase.onAdd = () => {
+  const d = L.DomUtil.create("div", "base-sel");
+  d.innerHTML = Object.keys(BASES).map(k =>
+    '<button type="button" data-base="' + k + '" aria-pressed="' + (k === base) + '">' +
+    k[0].toUpperCase() + k.slice(1) + "</button>").join("");
+  L.DomEvent.disableClickPropagation(d);
+  d.querySelectorAll("button").forEach(b => b.addEventListener("click", () => {
+    map.removeLayer(BASES[base].capa);
+    base = b.dataset.base;
+    BASES[base].capa.addTo(map);
+    d.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x.dataset.base === base));
+    if (capaGeo) capaGeo.setStyle(estilo);
+  }));
+  return d;
+};
+ctlBase.addTo(map);
+
+const modal = document.getElementById("modal");
+const abrir = v => modal.classList.toggle("on", v);
+document.getElementById("btn-info").addEventListener("click", () => abrir(true));
+document.getElementById("btn-cerrar").addEventListener("click", () => abrir(false));
+modal.addEventListener("click", e => { if (e.target === modal) abrir(false); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") abrir(false); });
+
+Promise.all([
+  fetch("data/historico_2025.geojson").then(r => r.json()),
+  fetch("data/forecast.json").then(r => r.ok ? r.json() : Promise.reject(r.status))
+    .catch(e => { fcError = "" + e; return null; })
+]).then(([h, f]) => {
+  HIST = h; FC = f;
+  capaGeo = L.geoJSON(HIST, {
+    style: estilo,
+    onEachFeature: (feat, l) => {
+      l.bindTooltip(() => ficha(feat.properties), {sticky:true, className:"celda", direction:"top"});
+      l.bindPopup(() => ficha(feat.properties), {maxWidth:320});
+      l.on("mouseover", e => e.target.setStyle({weight:2, color:"#001C47"}));
+      l.on("mouseout",  e => e.target.setStyle({weight:.3, color:BASES[base].borde}));
+    }
+  }).addTo(map);
+  map.fitBounds(capaGeo.getBounds(), {padding:[12,12]});
+  panel();
+  contexto();
+}).catch(err => {
+  document.getElementById("contexto").innerHTML =
+    '<span class="badge stale">ERROR</span><span>No se han podido cargar los datos del visor (' + err + ').</span>';
+});
+</script>
+</body>
+</html>

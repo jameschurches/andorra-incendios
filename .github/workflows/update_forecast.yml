@@ -1,0 +1,48 @@
+name: Actualizar previsión D+0–D+7
+
+# Regenera únicamente docs/data/forecast.json. El caso de estudio de 2025
+# (docs/data/historico_2025.geojson) no se toca nunca desde este flujo.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "20 5 * * *"      # 05:20 UTC ≈ 07:20 Europe/Madrid
+
+permissions:
+  contents: write
+
+concurrency:
+  group: forecast
+  cancel-in-progress: false
+
+jobs:
+  forecast:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependencias
+        run: pip install --quiet pandas numpy pyarrow
+
+      # Open-Meteo no requiere clave: no hay secretos en este flujo.
+      - name: Generar previsión
+        run: python src/build_forecast.py
+
+      - name: Controles de integridad
+        run: python src/checks.py
+
+      - name: Publicar si la previsión ha cambiado
+        run: |
+          if git diff --quiet -- docs/data/forecast.json; then
+            echo "Sin cambios en la previsión; no se publica."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/data/forecast.json
+          git commit -m "Previsión automática $(date -u +%Y-%m-%d)"
+          git push
